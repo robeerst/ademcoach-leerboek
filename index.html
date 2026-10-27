@@ -398,13 +398,24 @@ details.crit .check label{background:var(--surface)}
 #gate .err{color:var(--warn);font-size:13.5px;margin-top:12px;min-height:1em}
 #userbar{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;color:var(--muted);margin-top:14px}
 #userbar button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+#userbar .ub{display:flex;gap:6px}
+#userbar .adm{border-color:var(--gold);color:var(--gold-deep);font-weight:600}
+#gate .st[hidden]{display:none}
+#gate .st p{margin:0 0 14px}
+#gate .reg{display:grid;gap:10px;text-align:left;margin:4px 0 12px}
+#gate .reg label{display:grid;gap:4px;font-size:12.5px;font-weight:600;color:var(--gold-deep)}
+#gate .reg input{font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+#gate .reg input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+#gate .link{background:none;border:0;color:var(--muted);font-size:13px;text-decoration:underline;cursor:pointer;margin-top:10px}
 </style>
 <div id="gate"><div class="box">
 <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round"><path d="M3 9h11a3 3 0 1 0-3-3"/><path d="M3 15h15a3 3 0 1 1-3 3"/><path d="M3 12h8"/></svg>
 <h1>The Wounded Healer</h1>
-<p>Log in om het leerboek te openen.</p>
+<p id="g-sub">Log in om het leerboek te openen.</p>
 <button class="gbtn" id="g-login"><svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Inloggen met Google</button>
-<div class="err" id="g-err"></div><div id="g-noacc" hidden><p>Je bent ingelogd als <b id="g-mail"></b>, maar dit account heeft (nog) geen toegang tot het leerboek. Vraag de beheerder om je toe te voegen.</p><button class="gbtn" id="g-out" type="button">Uitloggen</button></div>
+<div class="err" id="g-err"></div><div class="st" id="g-reg" hidden><p>Welkom! Vul je naam in om toegang aan te vragen.</p><form class="reg" id="g-regf"><label>Voornaam<input id="g-first" required autocomplete="given-name"></label><label>Achternaam<input id="g-last" required autocomplete="family-name"></label><button class="gbtn" type="submit">Toegang aanvragen</button></form><button class="link g-out" type="button">Uitloggen</button></div>
+<div class="st" id="g-wait" hidden><p>Bedankt, <b class="g-name"></b>. Je aanvraag is binnen. Je krijgt toegang zodra de beheerder je goedkeurt. Kom daarna gewoon terug naar deze pagina.</p><button class="gbtn" id="g-again" type="button">Opnieuw controleren</button><button class="link g-out" type="button">Uitloggen</button></div>
+<div class="st" id="g-rev" hidden><p>De toegang van <b class="g-mail"></b> tot het leerboek is ingetrokken. Neem contact op met de beheerder als je denkt dat dit niet klopt.</p><button class="gbtn g-out" type="button">Uitloggen</button></div>
 <small><a href="privacy.html">Privacyverklaring</a></small>
 </div></div>
 <div id="home" class="wrap"></div>
@@ -422,35 +433,52 @@ details.crit .check label{background:var(--surface)}
 (function(){
   const sb=window.supabase.createClient("https://yybqlntyldcoxdqwftei.supabase.co","sb_publishable_r0yjhKH0VNKhZOCujnv_lQ_M0E5FJlo");
   const $id=id=>document.getElementById(id);
-  const gate=$id("gate"),err=$id("g-err"),login=$id("g-login"),noacc=$id("g-noacc");
+  const gate=$id("gate"),err=$id("g-err"),login=$id("g-login"),views=["g-reg","g-wait","g-rev"];
   const here=location.origin+location.pathname;
-  let started=false;
+  const clean=v=>String(v??"").replace(/[&<>"]/g,"");
+  let started=false,cur=null;
   window.pdfUrl=async f=>{const {data,error}=await sb.storage.from("pdf").createSignedUrl("pdf/"+f,60,{download:f});if(error)throw error;return data.signedUrl};
-  async function loadApp(){
-    for(const f of ["content.js","quiz.js","app.js"]){
-      const {data,error}=await sb.storage.from("pdf").download("app/"+f);
-      if(error)throw error;
-      const s=document.createElement("script");s.textContent=await data.text();document.body.appendChild(s);
-    }
+  async function inject(f){
+    const {data,error}=await sb.storage.from("pdf").download("app/"+f);
+    if(error)throw error;
+    const s=document.createElement("script");s.textContent=await data.text();document.body.appendChild(s);
   }
-  function userbar(name){
+  async function loadApp(){for(const f of ["content.js","quiz.js","app.js"])await inject(f)}
+  function view(id){gate.hidden=false;login.hidden=!!id;$id("g-sub").hidden=!!id;views.forEach(v=>$id(v).hidden=v!==id)}
+  function userbar(name,admin){
     let bar=$id("userbar");
     if(!bar){bar=document.createElement("div");bar.id="userbar";bar.className="wrap";$id("home").after(bar)}
-    bar.innerHTML='<span>Ingelogd als '+String(name).replace(/[&<>"]/g,"")+'</span><button type="button">Uitloggen</button>';
-    bar.querySelector("button").onclick=async()=>{await sb.auth.signOut();location.reload()};
+    bar.innerHTML='<span>Ingelogd als '+clean(name)+'</span><span class="ub">'+(admin?'<button type="button" class="adm">Beheer</button>':'')+'<button type="button" class="out">Uitloggen</button></span>';
+    bar.querySelector(".out").onclick=async()=>{await sb.auth.signOut();location.reload()};
+    const ab=bar.querySelector(".adm");
+    if(ab)ab.onclick=async()=>{ab.disabled=true;try{if(!window.ADMIN)await inject("admin.js");await ADMIN.open(sb);ab.disabled=false}catch(e){ab.disabled=false;ab.textContent="Beheer laden mislukt"}};
   }
   async function show(session){
-    err.textContent="";
-    if(!session){gate.hidden=false;login.hidden=false;noacc.hidden=true;return}
+    err.textContent="";cur=session;
+    if(!session){view(null);return}
     if(started)return;
-    const {data:member,error}=await sb.rpc("is_member");
-    if(error||!member){gate.hidden=false;login.hidden=true;noacc.hidden=false;$id("g-mail").textContent=session.user.email;return}
+    const {data:st,error}=await sb.rpc("my_status");
+    if(error){view(null);login.hidden=true;err.textContent="Je status kon niet worden opgehaald. Vernieuw de pagina.";return}
+    const m=session.user.user_metadata||{};
+    document.querySelectorAll(".g-mail").forEach(e=>e.textContent=session.user.email);
+    if(!st){$id("g-first").value=m.given_name||(m.full_name||"").split(" ")[0]||"";$id("g-last").value=m.family_name||(m.full_name||"").split(" ").slice(1).join(" ")||"";view("g-reg");return}
+    const name=[st.first_name,st.last_name].filter(Boolean).join(" ")||m.full_name||session.user.email;
+    document.querySelectorAll(".g-name").forEach(e=>e.textContent=st.first_name||name);
+    if(st.status==="pending"){view("g-wait");return}
+    if(st.status!=="active"){view("g-rev");return}
     started=true;
-    try{await loadApp();gate.hidden=true;const m=session.user.user_metadata||{};userbar(m.full_name||m.name||session.user.email)}
+    try{await loadApp();gate.hidden=true;userbar(name,st.role==="admin")}
     catch(e){started=false;err.textContent="Het leerboek kon niet geladen worden. Probeer het opnieuw."}
   }
+  $id("g-regf").onsubmit=async e=>{
+    e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;err.textContent="";
+    const {error}=await sb.rpc("request_access",{p_first:$id("g-first").value.trim(),p_last:$id("g-last").value.trim()});
+    b.disabled=false;if(error){err.textContent="Aanvragen lukte niet: "+error.message;return}
+    show(cur);
+  };
+  $id("g-again").onclick=()=>show(cur);
   login.onclick=async()=>{err.textContent="";const {error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:here}});if(error)err.textContent="Inloggen lukte niet: "+error.message};
-  $id("g-out").onclick=async()=>{await sb.auth.signOut();location.reload()};
+  document.querySelectorAll(".g-out").forEach(b=>b.onclick=async()=>{await sb.auth.signOut();location.reload()});
   sb.auth.getSession().then(({data})=>show(data.session));
   sb.auth.onAuthStateChange((_e,s)=>{if(s)show(s)});
 })();
